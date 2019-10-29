@@ -130,7 +130,7 @@ async def manage_serial(s: aioserial.AioSerial):
     spacekeys = await request_spacekeys(s)
 
     if do_sanity_checks:
-        assert len(bonds) == len(spacekeys)
+        assert len(bonds) == len(spacekeys) == len(coin_list), "number of coins does not match"
         for i in zip(bonds, spacekeys, coin_list):
             assert i[0][0] == i[1][0], "addresses must match"
             assert i[2][0] == i[0][0], "addresses must match"
