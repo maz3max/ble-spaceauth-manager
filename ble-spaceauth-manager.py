@@ -49,11 +49,43 @@ def parse_bond(l):
         return m.groups()
 
 
+# list registered bonds
+async def request_bonds(s: aioserial.AioSerial):
+    bonds = []
+    s.write(b'stats bonds\r\n')
+    line = None
+    while not (line and line.endswith('stats bonds\r\n')):
+        line = await serial_fetch_line(s)
+        print(line, end='', flush=True)
+    while line != 'done\r\n':
+        line = await serial_fetch_line(s)
+        bond = parse_bond(line)
+        if bond:
+            bonds.append(bond)
+    return bonds
+
+
 def parse_spacekey(l):
     spacekey = r"\[(.{17})\] : ([A-F0-9]{2})\.\.\.\r\n"
     m = re.match(spacekey, l)
     if m:
         return m.groups()
+
+
+# list registered spacekeys
+async def request_spacekeys(s: aioserial.AioSerial):
+    spacekeys = []
+    s.write(b'stats spacekey\r\n')
+    line = None
+    while not (line and line.endswith('stats spacekey\r\n')):
+        line = await serial_fetch_line(s)
+        print(line, end='', flush=True)
+    while line != 'done\r\n':
+        line = await serial_fetch_line(s)
+        spacekey = parse_spacekey(line)
+        if spacekey:
+            spacekeys.append(spacekey)
+    return spacekeys
 
 
 class StatusType(IntEnum):
@@ -90,35 +122,12 @@ async def serial_fetch_line(s):
 
 
 async def manage_serial(s: aioserial.AioSerial):
-    line = None
     s.write(b'ble_start\r\n')
 
     config_identity, coin_list = read_db()
 
-    bonds = []
-    spacekeys = []
-
-    # list registered bonds
-    s.write(b'stats bonds\r\n')
-    while not (line and line.endswith('stats bonds\r\n')):
-        line = await serial_fetch_line(s)
-        print(line, end='', flush=True)
-    while line != 'done\r\n':
-        line = await serial_fetch_line(s)
-        bond = parse_bond(line)
-        if bond:
-            bonds.append(bond)
-
-    # list registered spacekeys
-    s.write(b'stats spacekey\r\n')
-    while not line.endswith('stats spacekey\r\n'):
-        line = await serial_fetch_line(s)
-        print(line, end='', flush=True)
-    while line != 'done\r\n':
-        line = await serial_fetch_line(s)
-        spacekey = parse_spacekey(line)
-        if spacekey:
-            spacekeys.append(spacekey)
+    bonds = await request_bonds(s)
+    spacekeys = await request_spacekeys(s)
 
     if do_sanity_checks:
         assert len(bonds) == len(spacekeys)
