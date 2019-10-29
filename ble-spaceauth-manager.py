@@ -16,6 +16,13 @@ ansi_escape = re.compile(r'''
     [@-~]   # Final byte
 ''', re.VERBOSE)
 
+do_sanity_checks = True
+verbose = False
+
+
+def confirm_authentication(address, battery):
+    print("\t[%s] successfully authenticated. Remaining Battery: %s%%" % (address, battery))
+
 
 def read_db(coins="coins.txt", central="central.txt"):
     coin_list = []
@@ -50,21 +57,23 @@ def parse_spacekey(l):
 
 def parse_status(l):
     regs = {
-        'identity': r"<inf> bt_hci_core: Identity: (.{17}) \((.*)\)",  #
-        'device_found': r"<inf> app: Device found: \[(.{17})\] \(RSSI (-?\d+)\) \(TYPE (\d)\) \(BONDED (\d)\)",  #
+        'identity': r"<inf> bt_hci_core: Identity: (.{17}) \((.*)\)",
+        'device_found': r"<inf> app: Device found: \[(.{17})\] \(RSSI (-?\d+)\) \(TYPE (\d)\) \(BONDED (\d)\)",
         'battery_level': r"<inf> app: Battery Level: (\d{1,3})%",
-        'connected': r"<inf> app: Connected: \[(.{17})\]",  #
-        'authenticated': r"<inf> app: KEY AUTHENTICATED. OPEN DOOR PLEASE.",  #
-        'disconnected': r"<inf> app: Disconnected: \[(.{17})\] \(reason (\d+)\)",  #
+        'connected': r"<inf> app: Connected: \[(.{17})\]",
+        'authenticated': r"<inf> app: KEY AUTHENTICATED. OPEN DOOR PLEASE.",
+        'disconnected': r"<inf> app: Disconnected: \[(.{17})\] \(reason (\d+)\)",
     }
     for k in regs:
         m = re.search(pattern=regs[k], string=l)
         if m:
-            print(k, m.groups())
-            break
+            if verbose:
+                print('\t', k, m.groups())
+            return k, m.groups()
+    return None, None
 
 
-async def getline(s):
+async def serial_fetch_line(s):
     line = (await s.readline_async()).decode(errors='ignore')
     plain_line = ansi_escape.sub('', line)
     return plain_line
@@ -75,29 +84,58 @@ async def manage_serial(s: aioserial.AioSerial):
     s.write(b'ble_start\r\n')
 
     config_identity, coin_list = read_db()
+
+    bonds = []
+    spacekeys = []
+
     # list registered bonds
     s.write(b'stats bonds\r\n')
     while not (line and line.endswith('stats bonds\r\n')):
-        line = await getline(s)
+        line = await serial_fetch_line(s)
         print(line, end='', flush=True)
     while line != 'done\r\n':
-        line = await getline(s)
-        print(parse_bond(line))
+        line = await serial_fetch_line(s)
+        bond = parse_bond(line)
+        if bond:
+            bonds.append(bond)
 
     # list registered spacekeys
     s.write(b'stats spacekey\r\n')
     while not line.endswith('stats spacekey\r\n'):
-        line = await getline(s)
+        line = await serial_fetch_line(s)
         print(line, end='', flush=True)
     while line != 'done\r\n':
-        line = await getline(s)
-        print(parse_spacekey(line))
+        line = await serial_fetch_line(s)
+        spacekey = parse_spacekey(line)
+        if spacekey:
+            spacekeys.append(spacekey)
 
+    if do_sanity_checks:
+        assert len(bonds) == len(spacekeys)
+        for i in zip(bonds, spacekeys, coin_list):
+            assert i[0][0] == i[1][0], "addresses must match"
+            assert i[2][0] == i[0][0], "addresses must match"
+            assert i[2][3][:2] == i[1][1], "spacekey must match"
+
+    battery_level = 0
+    coin_address = ""
     # main event loop
     while True:
-        line = await getline(s)
+        line = await serial_fetch_line(s)
         print(line, end='', flush=True)
-        parse_status(line)
+        k, v = parse_status(line)
+        if do_sanity_checks:
+            if k == 'identity':
+                assert v[0].upper() == config_identity[0], v
+        if k == 'authenticated':
+            confirm_authentication(coin_address, battery_level)
+        elif k == 'battery_level':
+            battery_level = v[0]
+        elif k == 'connected':
+            coin_address = v[0]
+        elif k == 'disconnected':
+            battery_level = 0
+            coin_address = ""
 
 
 def signal_handler(signum, frame):
