@@ -25,6 +25,7 @@ def confirm_authentication(address, battery):
     print("\t[%s] successfully authenticated. Remaining Battery: %s%%" % (address, battery))
 
 
+# read coins and central ids from pseudo-database
 def read_db(coins="coins.txt", central="central.txt"):
     coin_list = []
     identity = None
@@ -42,7 +43,7 @@ def read_db(coins="coins.txt", central="central.txt"):
     return identity, coin_list
 
 
-def parse_bond(l):
+def _parse_bond(l):
     bond = r"\[(.{17})\] keys: 34, flags: 17\r\n"
     m = re.match(bond, l)
     if m:
@@ -59,13 +60,13 @@ async def request_bonds(s: aioserial.AioSerial):
         print(line, end='', flush=True)
     while line != 'done\r\n':
         line = await serial_fetch_line(s)
-        bond = parse_bond(line)
+        bond = _parse_bond(line)
         if bond:
             bonds.append(bond)
     return bonds
 
 
-def parse_spacekey(l):
+def _parse_spacekey(l):
     spacekey = r"\[(.{17})\] : ([A-F0-9]{2})\.\.\.\r\n"
     m = re.match(spacekey, l)
     if m:
@@ -82,7 +83,7 @@ async def request_spacekeys(s: aioserial.AioSerial):
         print(line, end='', flush=True)
     while line != 'done\r\n':
         line = await serial_fetch_line(s)
-        spacekey = parse_spacekey(line)
+        spacekey = _parse_spacekey(line)
         if spacekey:
             spacekeys.append(spacekey)
     return spacekeys
@@ -97,6 +98,7 @@ class StatusType(IntEnum):
     DISCONNECTED = 5
 
 
+# parse status messages
 def parse_status(l):
     regs = {
         StatusType.IDENTITY: r"<inf> bt_hci_core: Identity: (.{17}) \((.*)\)",
@@ -115,12 +117,14 @@ def parse_status(l):
     return None, None
 
 
+# read line and remove color codes
 async def serial_fetch_line(s):
     line = (await s.readline_async()).decode(errors='ignore')
     plain_line = ansi_escape.sub('', line)
     return plain_line
 
 
+# main state machine routine
 async def manage_serial(s: aioserial.AioSerial):
     s.write(b'ble_start\r\n')
 
@@ -157,6 +161,7 @@ async def manage_serial(s: aioserial.AioSerial):
             coin_address = ""
 
 
+# user-initiated termination
 def signal_handler(signum, frame):
     central_serial.write(b"reboot\r\n")
     sys.exit(0)
