@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import serial.serialutil
+import fcntl
 
 # 7-bit C1 ANSI sequences
 ansi_escape = re.compile(r'''
@@ -14,6 +15,23 @@ ansi_escape = re.compile(r'''
     [ -/]*  # Intermediate bytes
     [@-~]   # Final byte
 ''', re.VERBOSE)
+
+
+def read_db(coins="coins.txt", central="central.txt"):
+    coin_list = []
+    identity = None
+    with open(coins, "r") as f:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for line in f:
+            m = re.match(r"(.{17})\s+(.{32})\s+(.{32})\s+(.{64})", line)
+            if m:
+                coin_list.append(m.groups())
+    with open(central, "r") as f:
+        line = f.readline()
+        m = re.match(r"(.{17})\s+(.{32})", line)
+        if m:
+            identity = m.groups()
+    return identity, coin_list
 
 
 def parse_bond(l):
@@ -56,6 +74,7 @@ async def manage_serial(s: aioserial.AioSerial):
     line = None
     s.write(b'ble_start\r\n')
 
+    config_identity, coin_list = read_db()
     # list registered bonds
     s.write(b'stats bonds\r\n')
     while not (line and line.endswith('stats bonds\r\n')):
