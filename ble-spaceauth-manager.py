@@ -6,6 +6,7 @@ import signal
 import sys
 import serial.serialutil
 import fcntl
+from enum import IntEnum
 
 # 7-bit C1 ANSI sequences
 ansi_escape = re.compile(r'''
@@ -55,14 +56,23 @@ def parse_spacekey(l):
         return m.groups()
 
 
+class StatusType(IntEnum):
+    IDENTITY = 0
+    DEVICE_FOUND = 1
+    BATTERY_LEVEL = 2
+    CONNECTED = 3
+    AUTHENTICATED = 4
+    DISCONNECTED = 5
+
+
 def parse_status(l):
     regs = {
-        'identity': r"<inf> bt_hci_core: Identity: (.{17}) \((.*)\)",
-        'device_found': r"<inf> app: Device found: \[(.{17})\] \(RSSI (-?\d+)\) \(TYPE (\d)\) \(BONDED (\d)\)",
-        'battery_level': r"<inf> app: Battery Level: (\d{1,3})%",
-        'connected': r"<inf> app: Connected: \[(.{17})\]",
-        'authenticated': r"<inf> app: KEY AUTHENTICATED. OPEN DOOR PLEASE.",
-        'disconnected': r"<inf> app: Disconnected: \[(.{17})\] \(reason (\d+)\)",
+        StatusType.IDENTITY: r"<inf> bt_hci_core: Identity: (.{17}) \((.*)\)",
+        StatusType.DEVICE_FOUND: r"<inf> app: Device found: \[(.{17})\] \(RSSI (-?\d+)\) \(TYPE (\d)\) \(BONDED (\d)\)",
+        StatusType.BATTERY_LEVEL: r"<inf> app: Battery Level: (\d{1,3})%",
+        StatusType.CONNECTED: r"<inf> app: Connected: \[(.{17})\]",
+        StatusType.AUTHENTICATED: r"<inf> app: KEY AUTHENTICATED. OPEN DOOR PLEASE.",
+        StatusType.DISCONNECTED: r"<inf> app: Disconnected: \[(.{17})\] \(reason (\d+)\)",
     }
     for k in regs:
         m = re.search(pattern=regs[k], string=l)
@@ -125,15 +135,15 @@ async def manage_serial(s: aioserial.AioSerial):
         print(line, end='', flush=True)
         k, v = parse_status(line)
         if do_sanity_checks:
-            if k == 'identity':
+            if k == StatusType.IDENTITY:
                 assert v[0].upper() == config_identity[0], v
-        if k == 'authenticated':
+        if k == StatusType.AUTHENTICATED:
             confirm_authentication(coin_address, battery_level)
-        elif k == 'battery_level':
+        elif k == StatusType.BATTERY_LEVEL:
             battery_level = v[0]
-        elif k == 'connected':
+        elif k == StatusType.CONNECTED:
             coin_address = v[0]
-        elif k == 'disconnected':
+        elif k == StatusType.DISCONNECTED:
             battery_level = 0
             coin_address = ""
 
