@@ -158,7 +158,7 @@ async def manage_serial(s: aioserial.AioSerial):
         k, v = parse_status(line)
         if not args.skip_sanity_checks:
             if k == StatusType.IDENTITY:
-                assert v[0].upper() == config_identity[0], v
+                assert v[0].upper() == config_identity[0], "central identity must match"
         if k == StatusType.AUTHENTICATED:
             confirm_authentication(coin_address, battery_level)
         elif k == StatusType.BATTERY_LEVEL:
