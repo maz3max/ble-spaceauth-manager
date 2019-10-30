@@ -20,17 +20,6 @@ ansi_escape = re.compile(r'''
     [@-~]   # Final byte
 ''', re.VERBOSE)
 
-parser = argparse.ArgumentParser(description='BLE Space Authentication Helper script.')
-parser.add_argument('--skip-sanity-checks', action='store_true', default=False,
-                    help='skip matching with local coin list')
-parser.add_argument('--verbose', action='store_true', default=False, help='print more output')
-parser.add_argument('--topic', default='Netz39/Things/Door/Command', help='MQTT Topic to publish to')
-parser.add_argument('--host', default='localhost', help='MQTT Host to publish to')
-parser.add_argument('--port', default=1883, type=int, help='MQTT Host Port to publish to')
-parser.add_argument('--qos', default=2, type=int, help='QOS of MQTT message')
-parser.add_argument('--msg', default=b"door open", type=bytes, help='MQTT Message payload')
-args = parser.parse_args()
-
 
 def confirm_authentication(address, battery):
     print("\t[%s] successfully authenticated. Remaining Battery: %s%%" % (address, battery))
@@ -173,18 +162,35 @@ async def manage_serial(s: aioserial.AioSerial):
 
 # user-initiated termination
 def signal_handler(signum, frame):
+    global central_serial
     central_serial.write(b"reboot\r\n")
     sys.exit(0)
 
 
-if __name__ == '__main__':
+def main():
     loop = asyncio.get_event_loop()
     signal.signal(signal.SIGINT, signal_handler)
     while True:
         try:
+            global central_serial
             central_serial = aioserial.AioSerial(
                 port=os.path.realpath('/dev/serial/by-id/usb-ZEPHYR_N39_BLE_KEYKEEPER_0.01-if00'))
             loop.run_until_complete(manage_serial(central_serial))
         except serial.serialutil.SerialException:
             print("LOST CONNECTION. RECONNECTING...", file=sys.stderr)
             loop.run_until_complete(asyncio.sleep(5))
+
+
+if __name__ == '__main__':
+    central_serial = aioserial.AioSerial()
+    parser = argparse.ArgumentParser(description='BLE Space Authentication Helper script.')
+    parser.add_argument('--skip-sanity-checks', action='store_true', default=False,
+                        help='skip matching with local coin list')
+    parser.add_argument('--verbose', action='store_true', default=False, help='print more output')
+    parser.add_argument('--topic', default='Netz39/Things/Door/Command', help='MQTT Topic to publish to')
+    parser.add_argument('--host', default='localhost', help='MQTT Host to publish to')
+    parser.add_argument('--port', default=1883, type=int, help='MQTT Host Port to publish to')
+    parser.add_argument('--qos', default=2, type=int, help='QOS of MQTT message')
+    parser.add_argument('--msg', default=b"door open", type=bytes, help='MQTT Message payload')
+    args = parser.parse_args()
+    main()
