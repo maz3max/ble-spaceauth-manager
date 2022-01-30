@@ -1,3 +1,3 @@
-aioserial
-pyserial
-paho-mqtt
+intelhex==2.3.0
+aioserial==1.1.4
+paho-mqtt==1.5.0
